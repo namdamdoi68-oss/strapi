@@ -338,6 +338,44 @@ describe('Filters', () => {
     });
   });
 
+  /**
+   * EE-112 — `qs.parse` already decodes the value, so decoding it a second time threw
+   * `URI malformed` whenever the result still held a literal `%` (crashing the page), and
+   * silently rewrote values that happened to look URL-encoded.
+   */
+  it('should preserve a value that looks URL-encoded instead of decoding it twice', async () => {
+    const { user } = render();
+
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'a%26b');
+    fireEvent.click(screen.getByRole('button', { name: 'Add filter' }));
+
+    // The chip shows what was typed, not `a&b`.
+    const chip = await screen.findByText('Name $eq a%26b');
+    await user.click(chip);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Update filter' })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('a%26b');
+  });
+
+  it('should not crash when editing a filter whose value contains a literal %', async () => {
+    const { user } = render();
+
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), '100%');
+    fireEvent.click(screen.getByRole('button', { name: 'Add filter' }));
+
+    const chip = await screen.findByText('Name $eq 100%');
+    await user.click(chip);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Update filter' })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('100%');
+  });
+
   it('should correctly match filter when value is URL-encoded (decoded comparison)', async () => {
     const { user } = render();
 

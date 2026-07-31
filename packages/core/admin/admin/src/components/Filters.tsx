@@ -467,7 +467,7 @@ const AttributeTag = ({
       name,
       filter: operator,
       index,
-      value: FILTERS_WITH_NO_VALUE.includes(operator) ? undefined : decodeURIComponent(value),
+      value: FILTERS_WITH_NO_VALUE.includes(operator) ? undefined : value,
     });
     setOpen(true);
   };
