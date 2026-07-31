@@ -45,5 +45,6 @@ export interface ValidationIssue {
 
 export interface VerifyOptions {
   fix: boolean;
+  writeEn: boolean;
   bundleFilter?: string;
 }
