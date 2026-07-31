@@ -46,6 +46,5 @@ Extractions are classified automatically:
 
 ## Follow-ups
 
-- Run locale hygiene repo-wide and burn down remaining validation debt
-- Wire `yarn verify:translations` into CI once debt is burned down
-- Optional later: overwrite/sync existing `en.json` values from `defaultMessage` and align call sites
+- Optional: overwrite/sync existing `en.json` values from `defaultMessage` and align call sites (`--write-en`)
+- Optional: promote remaining `default-message-drift` warnings to errors once catalogs are aligned
