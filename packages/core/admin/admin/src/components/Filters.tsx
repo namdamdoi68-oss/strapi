@@ -33,10 +33,10 @@ interface FilterFormData {
 }
 
 /**
- * Carries the position in the `$and` array so we replace that exact entry, not every entry
- * sharing the same `(name, operator, value)`.
+ * The `$and` entry being edited, plus the position it held when editing started.
  */
 interface EditingFilter extends FilterFormData {
+  entry: Record<string, unknown>;
   index: number;
 }
 
@@ -50,6 +50,25 @@ interface FitlersContextValue {
 }
 
 const [FiltersProvider, useFilters] = createContext<FitlersContextValue>('Filters');
+
+/**
+ * Locates the edited entry in the *current* `$and`, which a removal may have re-indexed while the
+ * popover was open. Compares by shape because `qs` re-parses each render, so object identity is
+ * lost; the captured index only breaks ties between identical duplicates.
+ */
+const findEntryIndex = (
+  entries: NonNullable<NonNullable<Filters.Query['filters']>['$and']>,
+  editingFilter: EditingFilter
+) => {
+  const target = JSON.stringify(editingFilter.entry);
+  const { index } = editingFilter;
+
+  if (index >= 0 && index < entries.length && JSON.stringify(entries[index]) === target) {
+    return index;
+  }
+
+  return entries.findIndex((entry) => JSON.stringify(entry) === target);
+};
 
 const getFilterDetails = (
   filterEntry: Record<string, unknown>,
@@ -175,7 +194,14 @@ const PopoverImpl = ({ zIndex }: { zIndex?: number }) => {
   const setEditingFilter = useFilters('Popover', ({ setEditingFilter }) => setEditingFilter);
 
   const initialValues = React.useMemo(() => {
-    return editingFilter ?? { name: options[0]?.name, filter: BASE_FILTERS[0].value };
+    if (!editingFilter) {
+      return { name: options[0]?.name, filter: BASE_FILTERS[0].value };
+    }
+
+    // Only the form's own fields — `entry`/`index` are bookkeeping for locating the edited entry.
+    const { name, filter, value } = editingFilter;
+
+    return { name, filter, value };
   }, [editingFilter, options]);
 
   if (options.length === 0) {
@@ -225,17 +251,20 @@ const PopoverImpl = ({ zIndex }: { zIndex?: number }) => {
 
     const existingFilters = query.filters?.$and ?? [];
 
-    const newFilterQuery = editingFilter
-      ? {
-          ...query.filters,
-          $and: existingFilters.map((filter, i) =>
-            i === editingFilter.index ? newFilterEntry : filter
-          ),
-        }
-      : {
-          ...query.filters,
-          $and: [...existingFilters, newFilterEntry],
-        };
+    const editingIndex = editingFilter ? findEntryIndex(existingFilters, editingFilter) : -1;
+
+    const newFilterQuery =
+      editingFilter && editingIndex !== -1
+        ? {
+            ...query.filters,
+            $and: existingFilters.map((filter, i) =>
+              i === editingIndex ? newFilterEntry : filter
+            ),
+          }
+        : {
+            ...query.filters,
+            $and: [...existingFilters, newFilterEntry],
+          };
 
     setQuery({ filters: newFilterQuery, page: 1 }, 'push', true);
     setOpen(false);
@@ -416,14 +445,14 @@ const List = () => {
           return null;
         }
         /**
-         * `index` is the position in the raw `$and` array — entries skipped above still count.
-         * Never cache it: `qs` re-indexes on removal, so dropping entry 0 of [0, 1, 2]
-         * leaves [0, 1] and any held index goes stale.
+         * `index` is the position in the raw `$and` array, so the entries skipped above still
+         * count towards it.
          */
         return (
           <AttributeTag
             key={`${index}-${details.name}-${details.operator}-${details.value}`}
             {...filter}
+            entry={queryFilter}
             index={index}
             onRemove={handleRemove}
             operator={details.operator}
@@ -436,9 +465,11 @@ const List = () => {
 };
 
 interface AttributeTagProps extends Filters.Filter {
+  /** The `$and` entry this chip renders, so editing can re-locate it. */
+  entry: Record<string, unknown>;
   /**
-   * Position in the `$and` array. An explicit prop rather than a closure bound at the call
-   * site, so it stays part of the props comparison if this ever gets memoised.
+   * Position in `$and`. An explicit prop rather than a closure bound at the call site, so it
+   * stays part of the props comparison if this ever gets memoised.
    */
   index: number;
   onRemove: (index: number) => void;
@@ -447,6 +478,7 @@ interface AttributeTagProps extends Filters.Filter {
 }
 
 const AttributeTag = ({
+  entry,
   index,
   input,
   label,
@@ -466,6 +498,7 @@ const AttributeTag = ({
     setEditingFilter({
       name,
       filter: operator,
+      entry,
       index,
       value: FILTERS_WITH_NO_VALUE.includes(operator) ? undefined : value,
     });
